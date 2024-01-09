@@ -1,46 +1,70 @@
 use crossterm::event::KeyCode;
 use ratatui::{
-    layout::{Alignment, Constraint, Direction, Layout},
+    layout::{Constraint, Direction, Layout, Rect},
     style::*,
-    symbols,
     text::{Line, Text},
     widgets::*,
     Frame,
 };
 use tokio::sync::mpsc;
 
-use crate::{action, action::Action, tui::Event};
+use crate::action::Action;
 
-use super::Component;
+use super::{Component, HandleActionResponse};
 
-#[derive(Default, Clone, Copy)]
-enum Mode {
+#[derive(Default, Clone, Copy, PartialEq)]
+pub enum Mode {
     #[default]
     Normal,
     Insert,
 }
 
-pub struct Input {
-    value: String,
-    cursor_position: usize,
-    mode: Mode,
-    messages: Vec<String>,
+pub struct Input<'a> {
+    pub focused: bool,
+    pub block: Block<'a>,
+    pub value: String,
+    pub mode: Mode,
+    pub cursor_position: usize,
     tx: mpsc::UnboundedSender<Action>,
 }
 
-impl Input {
+impl<'a> Input<'a> {
     pub fn new(tx: mpsc::UnboundedSender<Action>) -> Self {
+        let block = Block::default().borders(Borders::ALL).title("Input");
+
         Self {
             tx,
+            block,
             value: "".into(),
             mode: Mode::default(),
-            messages: Vec::new(),
+            focused: false,
             cursor_position: 0,
         }
     }
+
+    pub fn value(mut self, value: String) -> Self {
+        self.cursor_position = value.chars().count();
+        self.value = value;
+        self
+    }
+
+    pub fn block(mut self, block: Block<'a>) -> Self {
+        self.block = block;
+        self
+    }
+
+    pub fn mode(mut self, mode: Mode) -> Self {
+        self.mode = mode;
+        self
+    }
+
+    pub fn focused(mut self, focused: bool) -> Self {
+        self.focused = focused;
+        self
+    }
 }
 
-impl Input {
+impl<'a> Input<'a> {
     fn delete_char(&mut self) {
         let is_not_cursor_leftmost = self.cursor_position != 0;
         if is_not_cursor_leftmost {
@@ -74,7 +98,7 @@ impl Input {
     }
 
     fn submit_message(&mut self) {
-        self.messages.push(self.value.clone());
+        // self.messages.push(self.value.clone());
         self.value.clear();
         self.reset_cursor();
     }
@@ -94,14 +118,18 @@ impl Input {
     }
 }
 
-impl Component for Input {
-    fn draw(&mut self, f: &mut Frame) {
-        let area = f.size();
-
+impl<'a> Component for Input<'a> {
+    fn draw(&mut self, f: &mut Frame, rect: Rect) {
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([Constraint::Length(1), Constraint::Length(3)])
-            .split(area);
+            .split(rect);
+
+        let mut border_style = Style::default().fg(Color::Gray);
+
+        if self.focused {
+            border_style = border_style.fg(Color::Cyan);
+        }
 
         let (msg, style) = match self.mode {
             Mode::Normal => (
@@ -120,7 +148,7 @@ impl Component for Input {
                     "Esc".bold(),
                     " to stop editing, ".into(),
                     "Enter".bold(),
-                    " to record the message".into(),
+                    " to save".into(),
                 ],
                 Style::default(),
             ),
@@ -137,35 +165,28 @@ impl Component for Input {
                 Mode::Normal => Style::default(),
                 Mode::Insert => Style::default().fg(Color::Cyan),
             })
-            .block(Block::default().borders(Borders::ALL).title("Input"));
+            .block(self.block.clone().border_style(border_style));
 
         // render input
         f.render_widget(input, chunks[1]);
     }
 
-    fn get_action(&self, event: Event) -> Action {
-        match event {
-            Event::Error => Action::None,
-            Event::Tick => Action::Tick,
-            Event::Render => Action::Render,
-            Event::Key(key) => Action::Key(key),
-            Event::Quit => Action::Quit,
-            _ => Action::None,
-        }
-    }
-
-    fn handle_action(&mut self, action: Action) {
+    fn handle_action(&mut self, action: Action) -> HandleActionResponse {
         match self.mode {
             Mode::Normal if let Action::Key(k) = action => match k.code {
                 KeyCode::Char('i') => self.mode = Mode::Insert,
-                KeyCode::Char('q') | KeyCode::Esc => {
-                    self.tx.send(Action::Quit).unwrap()
-                }
                 _ => {}
             },
             Mode::Insert if let Action::Key(k) = action => match k.code {
-                KeyCode::Esc => self.mode = Mode::Normal,
-                KeyCode::Char(c) => self.enter_char(c),
+                KeyCode::Esc => {
+                    self.mode = Mode::Normal;
+                    return HandleActionResponse::Ignore;
+                }
+
+                KeyCode::Char(c) => {
+                    self.enter_char(c);
+                    return HandleActionResponse::Ignore;
+                }
                 KeyCode::Backspace => self.delete_char(),
                 KeyCode::Left => self.move_cursor_left(),
                 KeyCode::Right => self.move_cursor_right(),
@@ -174,5 +195,14 @@ impl Component for Input {
             },
             _ => {}
         }
+        HandleActionResponse::default()
+    }
+
+    fn focus(&mut self) {
+        self.focused = true;
+    }
+
+    fn unfocus(&mut self) {
+        self.focused = false;
     }
 }

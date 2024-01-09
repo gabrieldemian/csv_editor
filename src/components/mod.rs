@@ -1,15 +1,26 @@
 pub mod counter;
+pub mod csv_table;
 pub mod input;
 pub mod table;
 
-use color_eyre::eyre::Result;
-use futures::Future;
-use ratatui::Frame;
+use ratatui::{layout::Rect, Frame};
 
-use crate::tui::Event;
+/// Each component, after calling "handle_action", will either let the page
+/// caller handle the action again, or ignore it. The component is the first one
+/// to handle it.
+#[derive(Clone, Copy, Debug, Default)]
+pub enum HandleActionResponse {
+    Ignore,
+    #[default]
+    Handle,
+}
 
 pub trait Component {
-    fn handle_action(&mut self, action: crate::action::Action);
-    fn get_action(&self, event: Event) -> crate::action::Action;
-    fn draw(&mut self, f: &mut Frame);
+    fn handle_action(
+        &mut self,
+        action: crate::action::Action,
+    ) -> HandleActionResponse;
+    fn draw(&mut self, f: &mut Frame, rect: Rect);
+    fn focus(&mut self);
+    fn unfocus(&mut self);
 }

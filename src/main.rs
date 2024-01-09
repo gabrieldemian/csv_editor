@@ -1,8 +1,10 @@
 #![feature(if_let_guard)]
-mod tui;
+mod action;
+mod utils;
 mod app;
 mod components;
-mod action;
+mod pages;
+mod tui;
 
 use app::App;
 use color_eyre::eyre::Result;
@@ -11,7 +13,6 @@ use color_eyre::eyre::Result;
 async fn main() -> Result<()> {
     let mut app = App::new();
     let result = app.run().await;
-
     result?;
 
     Ok(())

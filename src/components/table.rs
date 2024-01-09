@@ -1,18 +1,19 @@
 use crossterm::event::KeyCode;
 use ratatui::{
-    layout::{Alignment, Constraint, Direction, Layout},
+    layout::{Alignment, Constraint, Rect},
     style::{Color, Style},
     widgets::{Block, BorderType, Borders, Row, Table as TUITable, TableState},
     Frame,
 };
 use tokio::sync::mpsc;
 
-use crate::{action, action::Action, tui::Event};
+use crate::{action, action::Action};
 
-use super::Component;
+use super::{Component, HandleActionResponse};
 
 pub struct Table<'a> {
     tx: mpsc::UnboundedSender<Action>,
+    pub focused: bool,
     pub state: TableState,
     pub rows: Vec<Row<'a>>,
     pub widths: Vec<Constraint>,
@@ -26,18 +27,19 @@ impl<'a> Table<'a> {
             Row::new(vec!["Cell3", "Cell4"]),
         ];
         let widths = vec![Constraint::Length(5), Constraint::Length(5)];
-        Self { tx, state, rows, widths }
+        Self { tx, state, rows, widths, focused: false }
     }
 }
 
 impl<'a> Component for Table<'a> {
-    fn draw(&mut self, f: &mut Frame) {
-        let area = f.size();
-        let areas = Layout::new(
-            Direction::Vertical,
-            Constraint::from_percentages([50, 50]),
-        )
-        .split(area);
+    fn draw(&mut self, f: &mut Frame, rect: Rect) {
+        let mut border_style = Style::default().fg(Color::Gray);
+        let mut highlight_style = Style::default();
+
+        if self.focused {
+            border_style = border_style.fg(Color::Cyan);
+            highlight_style = highlight_style.fg(Color::Black).bg(Color::Cyan);
+        }
 
         f.render_stateful_widget(
             TUITable::new(self.rows.clone(), self.widths.clone())
@@ -46,29 +48,17 @@ impl<'a> Component for Table<'a> {
                         .title("ratatui table")
                         .title_alignment(Alignment::Center)
                         .borders(Borders::ALL)
+                        .border_style(border_style)
                         .border_type(BorderType::Rounded),
                 )
-                .highlight_style(
-                    Style::default().bg(Color::Cyan).fg(Color::Black),
-                )
+                .highlight_style(highlight_style)
                 .style(Style::default().fg(Color::Cyan)),
-            areas[0],
+            rect,
             &mut self.state,
         );
     }
 
-    fn get_action(&self, event: Event) -> Action {
-        match event {
-            Event::Error => Action::None,
-            Event::Tick => Action::Tick,
-            Event::Render => Action::Render,
-            Event::Key(key) => Action::Key(key),
-            Event::Quit => Action::Quit,
-            _ => Action::None,
-        }
-    }
-
-    fn handle_action(&mut self, action: Action) {
+    fn handle_action(&mut self, action: Action) -> HandleActionResponse {
         let rows = self.rows.len();
         let current = self.state.selected();
 
@@ -84,16 +74,22 @@ impl<'a> Component for Table<'a> {
                         v - 1
                     }
                 })),
-                KeyCode::Char('q') | KeyCode::Esc => {
-                    self.tx.send(Action::Quit).unwrap()
-                }
                 KeyCode::Enter => self
                     .tx
-                    .send(Action::ChangeComponent(action::Component::Counter))
+                    .send(Action::ChangePage(action::Page::Home))
                     .unwrap(),
                 _ => {}
             },
             _ => {}
         }
+        HandleActionResponse::default()
+    }
+
+    fn focus(&mut self) {
+        self.focused = true;
+    }
+
+    fn unfocus(&mut self) {
+        self.focused = false;
     }
 }

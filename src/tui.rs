@@ -8,8 +8,8 @@ use crossterm::{
     cursor,
     event::{
         DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste,
-        EnableMouseCapture, Event as CrosstermEvent, KeyCode, KeyEvent,
-        KeyEventKind, MouseEvent,
+        EnableMouseCapture, Event as CrosstermEvent, KeyEvent, KeyEventKind,
+        MouseEvent,
     },
     terminal::{EnterAlternateScreen, LeaveAlternateScreen},
 };
@@ -119,47 +119,40 @@ impl Tui {
                 let crossterm_event = reader.next().fuse();
 
                 tokio::select! {
-                  _ = _cancellation_token.cancelled() => {
-                    break;
-                  }
-                  maybe_event = crossterm_event => {
-                    match maybe_event {
-                      Some(Ok(evt)) => {
-                        match evt {
-                          CrosstermEvent::Key(key) => {
-                            if key.kind == KeyEventKind::Press {
-                                match key.code {
-                                    // KeyCode::Char('q') => {
-                                    //   _event_tx.send(Event::Quit).unwrap();
-                                    // },
-                                    _ => {
-                                      _event_tx.send(Event::Key(key)).unwrap();
-                                    }
-                                }
-                            }
-                          },
-                          CrosstermEvent::Mouse(mouse) => {
-                            _event_tx.send(Event::Mouse(mouse)).unwrap();
-                          },
-                          CrosstermEvent::Resize(x, y) => {
-                            _event_tx.send(Event::Resize(x, y)).unwrap();
-                          },
-                          CrosstermEvent::FocusLost => {
-                            _event_tx.send(Event::FocusLost).unwrap();
-                          },
-                          CrosstermEvent::FocusGained => {
-                            _event_tx.send(Event::FocusGained).unwrap();
-                          },
-                          CrosstermEvent::Paste(s) => {
-                            _event_tx.send(Event::Paste(s)).unwrap();
-                          },
-                        }
-                      }
-                      Some(Err(_)) => {
-                        _event_tx.send(Event::Error).unwrap();
-                      }
-                      None => {},
+                    _ = _cancellation_token.cancelled() => {
+                        break;
                     }
+                    maybe_event = crossterm_event => {
+                      match maybe_event {
+                        Some(Ok(evt)) => {
+                          match evt {
+                            CrosstermEvent::Key(key) => {
+                              if key.kind == KeyEventKind::Press {
+                                  _event_tx.send(Event::Key(key)).unwrap();
+                              }
+                            },
+                            CrosstermEvent::Mouse(mouse) => {
+                                _event_tx.send(Event::Mouse(mouse)).unwrap();
+                            },
+                            CrosstermEvent::Resize(x, y) => {
+                                _event_tx.send(Event::Resize(x, y)).unwrap();
+                            },
+                            CrosstermEvent::FocusLost => {
+                                _event_tx.send(Event::FocusLost).unwrap();
+                            },
+                            CrosstermEvent::FocusGained => {
+                                _event_tx.send(Event::FocusGained).unwrap();
+                            },
+                            CrosstermEvent::Paste(s) => {
+                                _event_tx.send(Event::Paste(s)).unwrap();
+                            },
+                          }
+                        }
+                        Some(Err(_)) => {
+                            _event_tx.send(Event::Error).unwrap();
+                        }
+                        None => {},
+                      }
                   },
                   _ = tick_delay => {
                       _event_tx.send(Event::Tick).unwrap();

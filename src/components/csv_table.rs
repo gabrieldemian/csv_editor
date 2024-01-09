@@ -3,7 +3,7 @@ use itertools::Itertools;
 use ratatui::{prelude::*, widgets::*, Frame};
 use tokio::sync::mpsc;
 
-use crate::{action, action::Action, utils::centered_rect};
+use crate::{action::Action, utils::centered_rect};
 
 use super::{
     input::{Input, Mode},
@@ -19,8 +19,10 @@ pub struct CsvTable<'a> {
     /// Matrix of rows and cells
     pub matrix: Vec<Vec<String>>,
     /// If this is Some, a popup will be rendered ontop of the current UI.
-    input: Option<Input<'a>>,
-    show_popup: bool,
+    edit_input: Option<Input<'a>>,
+    /// this is used to make 'edit_input' into None or Some.
+    show_edit_popup: bool,
+    show_delete_popup: bool,
 }
 
 impl<'a> CsvTable<'a> {
@@ -40,8 +42,9 @@ impl<'a> CsvTable<'a> {
         Self {
             tx,
             focused: true,
-            show_popup: false,
-            input: None,
+            show_edit_popup: false,
+            show_delete_popup: false,
+            edit_input: None,
             cell_focused: (0, 0),
             matrix,
         }
@@ -127,11 +130,34 @@ impl<'a> Component for CsvTable<'a> {
             }
         }
 
-        if !self.show_popup {
-            self.input = None;
+        if !self.show_edit_popup {
+            self.edit_input = None;
         }
 
-        if let Some(input) = &mut self.input {
+        if self.show_delete_popup {
+            let area = centered_rect(40, 10, rect);
+            f.render_widget(Clear, area);
+
+            let text = vec![
+                "Delete Cell?".into(),
+                "".into(),
+                Line::from(vec!["[y]es".red(), " [n]o".green()]),
+            ];
+
+            f.render_widget(
+                Paragraph::new(text)
+                    .block(
+                        Block::default()
+                            .title("Warning")
+                            .borders(Borders::ALL)
+                            .border_type(BorderType::Rounded),
+                    )
+                    .alignment(Alignment::Center),
+                area,
+            );
+        }
+
+        if let Some(input) = &mut self.edit_input {
             let block =
                 Block::default().title("Editing Cell").borders(Borders::ALL);
 
@@ -147,17 +173,34 @@ impl<'a> Component for CsvTable<'a> {
     fn handle_action(&mut self, action: Action) -> HandleActionResponse {
         let mut response = HandleActionResponse::default();
 
-        if let Some(input) = &mut self.input {
-            response = HandleActionResponse::Ignore;
+        if let Some(input) = &mut self.edit_input {
             if let Action::Key(k) = action {
                 if k.code == KeyCode::Enter {
                     *self.get_mut_focused_cell().unwrap() = input.value.clone();
-                    self.show_popup = false;
+                    self.show_edit_popup = false;
                 } else {
                     input.handle_action(action);
                 }
             }
-            // return response;
+        }
+
+        if self.show_delete_popup {
+            if let Action::Key(k) = action {
+                match k.code {
+                    KeyCode::Char('y') | KeyCode::Char('Y') => {
+                        self.show_delete_popup = false;
+                        if let Some(row) =
+                            self.matrix.get_mut(self.cell_focused.0)
+                        {
+                            row.remove(self.cell_focused.1);
+                        }
+                    }
+                    KeyCode::Char('n') | KeyCode::Char('N') => {
+                        self.show_delete_popup = false;
+                    }
+                    _ => {}
+                }
+            }
         }
 
         match action {
@@ -196,23 +239,35 @@ impl<'a> Component for CsvTable<'a> {
                 }
                 // open a popup to edit the cell
                 KeyCode::Char('e') | KeyCode::Enter => {
-                    if self.input.is_none() {
+                    if self.edit_input.is_none() {
                         let input = Input::new(self.tx.clone())
                             .value(self.get_focused_cell().unwrap().to_owned())
                             .focused(true)
                             .mode(Mode::Insert);
 
-                        self.input = Some(input);
-                        self.show_popup = true;
+                        self.edit_input = Some(input);
+                        self.show_edit_popup = true;
                     }
                 }
                 KeyCode::Char('q') | KeyCode::Esc => {
-                    if let Some(input) = &mut self.input {
+                    if self.show_delete_popup {
+                        self.show_delete_popup = false;
+                        response = HandleActionResponse::Ignore;
+                    }
+                    if let Some(input) = &mut self.edit_input {
                         if input.mode == Mode::Normal {
-                            self.show_popup = false;
-                            self.input = None;
+                            self.show_edit_popup = false;
+                            self.edit_input = None;
                         }
                         response = HandleActionResponse::Ignore;
+                    }
+                }
+                KeyCode::Char('d') => {
+                    if !self.show_edit_popup
+                        && self.edit_input.is_none()
+                        && !self.show_delete_popup
+                    {
+                        self.show_delete_popup = true;
                     }
                 }
                 _ => {}

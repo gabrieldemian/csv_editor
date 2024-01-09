@@ -1,7 +1,10 @@
+use std::{fs::OpenOptions, io::Write};
+
+use color_eyre::eyre::{eyre, Result};
 use crossterm::event::KeyCode;
 use itertools::Itertools;
 use ratatui::{prelude::*, widgets::*, Frame};
-use tokio::sync::mpsc;
+use tokio::{spawn, sync::mpsc, io::AsyncWriteExt};
 
 use crate::{action::Action, utils::centered_rect};
 
@@ -82,6 +85,48 @@ impl<'a> CsvTable<'a> {
     pub fn matrix(mut self, matrix: Vec<Vec<String>>) -> Self {
         self.matrix = matrix;
         self
+    }
+
+    /// Delete the focused cell and return it's value, if the deletion happened
+    /// successfully
+    pub fn delete_focused_cell(&mut self) -> Result<String> {
+        if let Some(row) = self.matrix.get_mut(self.cell_focused.0) {
+            let r = Ok(row.remove(self.cell_focused.1));
+            self.sync_file()?;
+            return r;
+        }
+        Err(eyre!("Could not delete cell"))
+    }
+
+    /// Synchronize the struct and write all data to the file in the disk.
+    pub fn sync_file(&self) -> Result<()> {
+        let mut r = String::new();
+        // let mut r = vec![""; self.matrix.len()];
+
+        for row in self.matrix.iter() {
+            let mut line: String =
+                row.iter().map(|s| format!("\"{s}\",")).collect();
+
+            // remote , from the last item
+            line.pop();
+
+            r.push_str(&line);
+            r.push_str("\n");
+        }
+
+        spawn(async move {
+            let mut file = tokio::fs::OpenOptions::new()
+                .write(true)
+                .read(false)
+                .create(true)
+                .open("testdata.csv")
+                .await
+                .unwrap();
+
+            let _r = file.write_all(r.as_bytes()).await.unwrap();
+        });
+
+        Ok(())
     }
 }
 
@@ -177,6 +222,7 @@ impl<'a> Component for CsvTable<'a> {
             if let Action::Key(k) = action {
                 if k.code == KeyCode::Enter {
                     *self.get_mut_focused_cell().unwrap() = input.value.clone();
+                    let _ = self.sync_file();
                     self.show_edit_popup = false;
                 } else {
                     input.handle_action(action);
@@ -189,11 +235,7 @@ impl<'a> Component for CsvTable<'a> {
                 match k.code {
                     KeyCode::Char('y') | KeyCode::Char('Y') => {
                         self.show_delete_popup = false;
-                        if let Some(row) =
-                            self.matrix.get_mut(self.cell_focused.0)
-                        {
-                            row.remove(self.cell_focused.1);
-                        }
+                        let _ = self.delete_focused_cell();
                     }
                     KeyCode::Char('n') | KeyCode::Char('N') => {
                         self.show_delete_popup = false;

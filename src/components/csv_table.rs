@@ -1,5 +1,3 @@
-use std::{fs::OpenOptions, io::Write};
-
 use color_eyre::eyre::{eyre, Result};
 use crossterm::event::KeyCode;
 use itertools::Itertools;
@@ -75,18 +73,6 @@ impl<'a> CsvTable<'a> {
         })
     }
 
-    pub fn get_focused_cell_coordinates(&mut self) -> Option<(usize, usize)> {
-        self.matrix.get(self.cell_focused.0).and_then(|r| {
-            r.get(self.cell_focused.1)
-                .and_then(|_| Some((self.cell_focused.0, self.cell_focused.1)))
-        })
-    }
-
-    pub fn matrix(mut self, matrix: Vec<Vec<String>>) -> Self {
-        self.matrix = matrix;
-        self
-    }
-
     /// Delete the focused cell and return it's value, if the deletion happened
     /// successfully
     pub fn delete_focused_cell(&mut self) -> Result<String> {
@@ -101,13 +87,11 @@ impl<'a> CsvTable<'a> {
     /// Synchronize the struct and write all data to the file in the disk.
     pub fn sync_file(&self) -> Result<()> {
         let mut r = String::new();
-        // let mut r = vec![""; self.matrix.len()];
-
         for row in self.matrix.iter() {
             let mut line: String =
                 row.iter().map(|s| format!("\"{s}\",")).collect();
 
-            // remote , from the last item
+            // remote "," from the last item
             line.pop();
 
             r.push_str(&line);

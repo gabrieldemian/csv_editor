@@ -1,5 +1,5 @@
 use crossterm::event::KeyCode;
-use ratatui::{prelude::*, widgets::Paragraph};
+use ratatui::{prelude::*, widgets::*};
 use tokio::sync::mpsc;
 
 use crate::{
@@ -40,10 +40,18 @@ impl<'a> Page for Home<'a> {
     fn draw(&mut self, f: &mut Frame) {
         let areas = self.layout.split(f.size());
 
-        f.render_widget(
-            Paragraph::new("move: 'hjkl'. quit: 'q'. edit cell: 'e'"),
-            areas[1],
-        );
+        let text = vec![Line::from(vec![
+            "move: ".into(),
+            "hjkl".bold().blue(),
+            " edit: ".into(),
+            "e".bold().blue(),
+            " delete: ".into(),
+            "d".bold().blue(),
+            " quit: ".into(),
+            "q".bold().blue(),
+        ])];
+
+        f.render_widget(Paragraph::new(text), areas[1]);
         self.csv_table.draw(f, areas[0]);
     }
 
